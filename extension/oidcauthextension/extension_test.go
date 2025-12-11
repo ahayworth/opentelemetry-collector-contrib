@@ -4,6 +4,7 @@
 package oidcauthextension
 
 import (
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -566,6 +567,50 @@ func TestFailedToVerifyToken(t *testing.T) {
 
 	// verify
 	assert.Error(t, err)
+	assert.NotNil(t, ctx)
+}
+
+func TestOIDCAuthenticationSucceededPublicKeys(t *testing.T) {
+	// prepare
+	oidcServer, err := newOIDCServer()
+	require.NoError(t, err)
+	oidcServer.Start()
+	defer oidcServer.Close()
+
+	pubKey := oidcServer.privateKey.Public()
+
+	p := newTestExtension(t, &Config{
+		Providers: []ProviderCfg{
+			{
+				IssuerURL:  oidcServer.URL,
+				Audience:   "unit-test",
+				PublicKeys: []crypto.PublicKey{pubKey},
+			},
+		},
+	})
+
+	err = p.Start(t.Context(), componenttest.NewNopHost())
+	require.NoError(t, err)
+
+	payload, _ := json.Marshal(map[string]any{
+		"sub":         "jdoe@example.com",
+		"name":        "jdoe",
+		"iss":         oidcServer.URL,
+		"aud":         "unit-test",
+		"exp":         time.Now().Add(time.Minute).Unix(),
+		"memberships": []string{"department-1", "department-2"},
+	})
+	token, err := oidcServer.token(payload)
+	require.NoError(t, err)
+
+	srvAuth, ok := p.(extensionauth.Server)
+	require.True(t, ok)
+
+	// test
+	ctx, err := srvAuth.Authenticate(t.Context(), map[string][]string{"authorization": {fmt.Sprintf("Bearer %s", token)}})
+
+	// verify
+	assert.NoError(t, err)
 	assert.NotNil(t, ctx)
 }
 

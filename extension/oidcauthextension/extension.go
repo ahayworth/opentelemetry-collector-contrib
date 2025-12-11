@@ -178,6 +178,23 @@ func (e *oidcExtension) processProviderConfig(ctx context.Context, p ProviderCfg
 		providerCfg: p,
 	}
 
+	vCfg := &oidc.Config{
+		ClientID:          p.Audience,
+		SkipClientIDCheck: p.IgnoreAudience,
+	}
+
+	if len(p.PublicKeys) > 0 {
+		keySet := &oidc.StaticKeySet{
+			PublicKeys: p.PublicKeys,
+		}
+
+		pc.verifier = oidc.NewVerifier(p.IssuerURL, keySet, vCfg)
+
+		e.providerContainers[p.IssuerURL] = &pc
+
+		return nil
+	}
+
 	pc.transport = &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -216,10 +233,7 @@ func (e *oidcExtension) processProviderConfig(ctx context.Context, p ProviderCfg
 		pc.client.CloseIdleConnections()
 		return fmt.Errorf("failed to create OIDC provider for %q: %w", p.IssuerURL, err)
 	}
-	pc.verifier = pc.provider.Verifier(&oidc.Config{
-		ClientID:          p.Audience,
-		SkipClientIDCheck: p.IgnoreAudience,
-	})
+	pc.verifier = pc.provider.Verifier(vCfg)
 
 	e.providerContainers[p.IssuerURL] = &pc
 

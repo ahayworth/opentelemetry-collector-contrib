@@ -4,6 +4,10 @@
 package oidcauthextension // import "github.com/open-telemetry/opentelemetry-collector-contrib/extension/oidcauthextension"
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/rsa"
 	"fmt"
 
 	"go.uber.org/multierr"
@@ -117,6 +121,11 @@ type ProviderCfg struct {
 	// The claim that holds the subject's group membership information.
 	// Optional.
 	GroupsClaim string `mapstructure:"groups_claim"`
+
+	// Static public keys to use when verifying tokens. When provided,
+	// only these keys will be used - no remote key discovery will happen.
+	// Optional.
+	PublicKeys []crypto.PublicKey `mapstructure:"public_keys"`
 }
 
 func (p *ProviderCfg) Validate() error {
@@ -126,5 +135,16 @@ func (p *ProviderCfg) Validate() error {
 	if p.IssuerURL == "" {
 		return errNoIssuerURL
 	}
+
+	for _, k := range p.PublicKeys {
+		switch k.(type) {
+		case *rsa.PublicKey:
+		case *ecdsa.PublicKey:
+		case ed25519.PublicKey:
+		default:
+			return fmt.Errorf("invalid public key format: %T", k)
+		}
+	}
+
 	return nil
 }
